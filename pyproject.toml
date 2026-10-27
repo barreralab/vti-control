@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "vti-control"
+version = "0.1.0"
+description = "Oxford Teslatron acquisition service and live desktop display"
+requires-python = ">=3.11"
+dependencies = []
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.7,<7", "pyqtgraph>=0.13,<0.15", "numpy>=1.26"]
+test = ["pytest>=8"]
+build = ["pyinstaller>=6"]
+[project.scripts]
+vti-service = "vti_control.service:main"
+vti-gui = "vti_control.gui:main"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]

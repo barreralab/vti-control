@@ -1,0 +1,26 @@
+{
+  "data_dir": "D:\\VTI-control\\data",
+  "log_dir": "D:\\VTI-control\\logs",
+  "backup_dir": "D:\\VTI-control\\backups",
+  "api_port": 17600,
+  "save_interval": 10,
+  "instruments": {
+    "itc": {
+      "host": "192.168.73.30",
+      "port": 7020,
+      "proxy_port": 17020,
+      "timeout": 0.7,
+      "poll_interval": 1
+    },
+    "ips": {
+      "host": "192.168.73.31",
+      "port": 7020,
+      "proxy_port": 17021,
+      "timeout": 0.7,
+      "poll_interval": 1,
+      "magnet_groups": [
+        "GRPZ"
+      ]
+    }
+  }
+}

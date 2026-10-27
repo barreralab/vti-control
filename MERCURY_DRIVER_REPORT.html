@@ -1,0 +1,168 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mercury driver improvements report</title><style>:root{color-scheme:dark}body{font:16px/1.65 "Segoe UI",sans-serif;background:#0c1220;color:#e4ecf7;max-width:1000px;margin:45px auto;padding:0 28px 60px}h1{font-size:36px}h2{color:#8ed8ff;margin-top:42px;border-top:1px solid #293b54;padding-top:20px}h3{color:#b5c9e3}a{color:#70cafa}pre{background:#131e30;border:1px solid #293b54;border-radius:8px;padding:16px;overflow:auto}code{font-family:Consolas,monospace;background:#19273b;padding:2px 4px}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #293b54;padding:9px;text-align:left}th{background:#19273b}li{margin:7px 0}</style><body><h1>Mercury driver improvements and validation report</h1>
+<p>Prepared 2026-10-27 for the BarreraLab VTI Control project.</p>
+<h2>Summary</h2>
+<p>The Mercury iTC and IPS QCoDeS drivers were changed to make ordinary parameter access predictable, avoid changing iTC configuration merely by connecting, and prevent several silent numeric-parsing errors. The existing parameter names and command mappings were preserved. The background VTI logger uses its own standard-library socket transport; these driver changes are for measurement scripts that use QCoDeS, including clients of the local VTI server.</p>
+<p>These are communication and data-integrity improvements. They are not a redesign or qualification of the magnet control sequences.</p>
+<h2>Repository and branch provenance</h2>
+<ul>
+<li>Local checkout: <code>D:\VTI-control\BarreraLabDrivers</code>.</li>
+<li>Upstream remote: <code>https://github.com/barreralab/BarreraInstrumentDrivers.git</code>.</li>
+<li>Working branch: <code>vti/mercury-communications</code>.</li>
+<li>Starting commit: <code>a65fa5890d9ab8d381fe4eeb3587e9f11065221b</code>.</li>
+<li>The checkout was cloned locally from the existing driver repository, whose checked-out branch was <code>serial_comms</code>. The new working branch therefore starts from that branch, not from <code>main</code>.</li>
+<li>No GitHub fork was created. No driver changes have been pushed, merged, or committed as part of the vti-control commit.</li>
+<li>The old OneDrive checkout and existing notebook environments were left unchanged.</li>
+</ul>
+<p>The cached <code>origin/main</code> reference in this local clone is <code>3dcb054</code>. Those references were inherited during the local clone; they are not a fresh assessment of the current GitHub default branch. Before preparing a driver PR, fetch the organization repository and choose the intended base branch. Port or cherry-pick only the Mercury changes as appropriate, rather than inadvertently including unrelated <code>serial_comms</code> work.</p>
+<h2>Files changed</h2>
+<table>
+<thead>
+<tr>
+  <th>File</th>
+  <th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>src/barreralabdrivers/drivers/OxfordMercuryITC.py</code></td>
+  <td>Remove connection-time configuration writes; delegate communication/parsing to shared helpers; add explicit legacy configuration method; parse pressure setpoint numerically.</td>
+</tr>
+<tr>
+  <td><code>src/barreralabdrivers/drivers/OxfordMercuryIPS.py</code></td>
+  <td>Use shared communication/parsing; respect configured timeout; parse heater resistance and voltage limit numerically.</td>
+</tr>
+<tr>
+  <td><code>src/barreralabdrivers/drivers/_mercury.py</code> (new)</td>
+  <td>Shared transaction lock, validated replies and acknowledgements, numeric parsing, and session-synchronization state.</td>
+</tr>
+<tr>
+  <td><code>tests/test_mercury_communications.py</code> (new)</td>
+  <td>Standalone simulated TCP tests using actual QCoDeS driver instances.</td>
+</tr>
+<tr>
+  <td><code>pyproject.toml</code></td>
+  <td>Add optional <code>mercury</code> and <code>test</code> dependency groups.</td>
+</tr>
+<tr>
+  <td><code>MERCURY_CHANGES.md</code> (new)</td>
+  <td>Concise change and adoption notes for driver reviewers.</td>
+</tr>
+</tbody>
+</table>
+<h2>1. Connecting to the iTC no longer changes its configuration</h2>
+<p>Previously, creating a <code>MercuryiTC</code> instance immediately sent:</p>
+<pre><code class="language-text">SET:DEV:DB5.P1:PRES:LOOP:AUX:DB4.G1
+SET:DEV:DB5.P1:PRES:LOOP:SWMD:OFF
+SET:DEV:DB5.P1:PRES:LOOP:FAUT:OFF
+</code></pre>
+<p>A connection intended only for monitoring could therefore reassign the pressure loop's auxiliary device and change its operating configuration. Reconnecting repeated those writes.</p>
+<p>The constructor no longer sends them. The previous sequence is available as the explicit method:</p>
+<pre><code class="language-python">itc.configure_manual_needle_valve()
+</code></pre>
+<p>That method deliberately changes hardware state and should be invoked only when the experiment requires the legacy configuration. It is not called by VTI Control. Identification queries still occur during connection.</p>
+<p>Compatibility implication: a script that relied on those implicit initialization writes must now request that configuration explicitly, after checking that it is appropriate. Silent preservation of that behavior would defeat read-only connection semantics.</p>
+<h2>2. Replace buffer flushing with one command / one reply</h2>
+<p>Previously, every getter attempted an unsolicited <code>visa_handle.read()</code> before sending its query. With an empty response buffer, that read could wait for the 400 ms timeout. A normal multi-channel acquisition could spend seconds waiting for expected empty-buffer timeouts.</p>
+<p>Setters sent <code>write()</code> followed by a read whose result was discarded, and suppressed read exceptions. A rejected SET or missing acknowledgement could therefore appear successful.</p>
+<p>Both instrument roots now use a shared <code>MercuryCommunication</code> mixin. Parameter getters call <code>_mercury_query()</code> and setters call <code>_mercury_set()</code>. Those methods send and receive using <code>visa_handle.query()</code>. There is no preliminary read and no blanket suppression of transaction failures.</p>
+<p>The old private helper names <code>_flush_then_get</code> and <code>_set_with_flush</code> remain to minimize changes to parameter declarations, but they now delegate to the transaction helpers; their historical names do not describe their new behavior.</p>
+<h2>3. Validate read replies and setter acknowledgements</h2>
+<p>For a READ command, the helper verifies the corresponding <code>STAT:</code> device/signal prefix. Identity replies must have an <code>IDN:</code> prefix. Terminal <code>INVALID</code>, <code>N/A</code>, <code>NAN</code>, and <code>ERROR</code> payloads raise errors instead of being parsed as measurements.</p>
+<p>SET replies are checked against explicit successful echo forms, including Oxford's <code>STAT:SET:...</code> echo with or without <code>:VALID</code>, and the supported <code>STAT:...:VALID</code> form. An unexpected or negative acknowledgement raises <code>ValueError</code>. Commands are not automatically retried.</p>
+<p>This makes failures visible to a measurement script. A SET timeout remains ambiguous: the hardware may have applied the command before communication failed. Callers must not blindly replay such operations. The supported echo forms have been exercised with simulated instruments; real hardware SET operations were not used during commissioning.</p>
+<h2>4. Correct numeric parsing</h2>
+<p>The old implementation searched the whole reply for numeric substrings and selected the last one. This could turn an invalid response into a believable number taken from the device identifier.</p>
+<p>The shared <code>response_float()</code> now validates only the final colon-delimited payload, supports signed integers, decimal numbers and scientific notation, checks a defined unit-suffix whitelist, and rejects non-finite results.</p>
+<p>Examples confirmed during the original review:</p>
+<table>
+<thead>
+<tr>
+  <th>Payload or response</th>
+  <th style="text-align:right">Old result</th>
+  <th>New behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>...:PRES:1.2E-3mB</code></td>
+  <td style="text-align:right"><code>3.0</code></td>
+  <td><code>0.0012</code></td>
+</tr>
+<tr>
+  <td><code>...:PFLD:-1T</code></td>
+  <td style="text-align:right"><code>1.0</code></td>
+  <td><code>-1.0</code></td>
+</tr>
+<tr>
+  <td><code>STAT:DEV:DB5.P1:PRES:SIG:PRES:INVALID</code></td>
+  <td style="text-align:right"><code>1.0</code>, from <code>DB5.P1</code></td>
+  <td>Error</td>
+</tr>
+<tr>
+  <td>Malformed or non-finite numeric payload</td>
+  <td style="text-align:right">Could parse a fragment</td>
+  <td>Error</td>
+</tr>
+</tbody>
+</table>
+<p>The driver helper validates recognized unit suffixes, not the physical dimension expected by every individual parameter. The separate logger transport performs its own per-channel expected-unit check. Those two levels of validation should not be confused.</p>
+<h2>5. Serialize in-process parameter transactions</h2>
+<p>The shared mixin creates one reentrant lock on the root instrument. Both root and submodule parameter helpers use that lock around a complete query or setter transaction. Concurrent threads using supported parameters on the same instrument instance therefore cannot interleave the write and read halves of an exchange.</p>
+<p>This is not an inter-process lock and does not make multiple physical Mercury sockets reliable. Separate driver instances and scripts need the local VTI server for cross-client coordination. Direct low-level <code>write()</code>, <code>ask()</code>, or <code>visa_handle</code> use bypasses these parameter helpers and should not be mixed concurrently with them.</p>
+<h2>6. Respect configurable timeouts and fail explicitly after lost synchronization</h2>
+<p>The old drivers overwrote the VISA timeout with 400 ms. The new mixin supplies a default QCoDeS timeout of 2 seconds and preserves an explicit caller value. For example, <code>timeout=0.3</code> results in a 300 ms VISA timeout; that conversion is tested. QCoDeS timeout arguments are seconds, while direct PyVISA timeout arguments are milliseconds.</p>
+<p>If a transport exception or mismatched read reply occurs, the driver marks the session as desynchronized and rejects subsequent helper transactions. The caller must close and recreate the driver instance. It does not keep reading through an uncertain stream and risk accepting a delayed reply as the next measurement.</p>
+<p>Automatic reconnection and backoff are implemented in the separate VTI service, not in these QCoDeS drivers. A normal, correctly framed instrument rejection raises an error without unnecessarily poisoning the session.</p>
+<h2>7. Return numbers for additional numeric properties</h2>
+<p>The following getters now apply the numeric parser instead of returning raw protocol strings:</p>
+<ul>
+<li><code>itc.vti.pset</code>.</li>
+<li><code>ips.mag.htr_resistance</code>.</li>
+<li><code>ips.mag.htr_vlim</code>.</li>
+</ul>
+<p>Their parameter names remain unchanged. A caller that manipulated the old response strings must be updated to work with floats. State parameters retain their existing raw-response conventions to avoid changing the public interface broadly in this communication patch.</p>
+<h2>8. Optional dependencies</h2>
+<p>The driver package now offers:</p>
+<ul>
+<li><code>mercury</code>: QCoDeS, NumPy, and the pure-Python PyVISA backend.</li>
+<li><code>test</code>: pytest.</li>
+</ul>
+<p>This keeps the base installation's existing lightweight dependency set while making the Mercury requirements explicit. The dependencies are not tightly version-pinned; the tested application environment is recorded separately in vti-control's <code>requirements-windows.lock.txt</code>.</p>
+<h2>Validation and scope of evidence</h2>
+<h3>Driver-specific tests</h3>
+<p><code>tests/test_mercury_communications.py</code> in the driver checkout has two parametrized test cases, one each for iTC and IPS. They use real QCoDeS objects connected to a simulated Oxford TCP server and verify:</p>
+<ul>
+<li>No SET commands are sent during construction.</li>
+<li>Explicit timeout values are respected.</li>
+<li>Scientific notation with a negative sign is parsed correctly.</li>
+<li>Concurrent parameter reads share transactions correctly.</li>
+<li>An invalid reply raises an error, and a subsequent valid query can succeed.</li>
+<li>The iTC's explicit configuration method sends its three commands, against the simulator only.</li>
+<li>Pressure-setpoint parsing returns a float.</li>
+</ul>
+<p>Run them from the driver checkout with the appropriate extras installed:</p>
+<pre><code class="language-powershell">python -m pytest tests/test_mercury_communications.py
+</code></pre>
+<h3>VTI integration and regression tests</h3>
+<p>The latest combined suite passed <strong>36 tests</strong>, including those two standalone driver cases. Additional tests in vti-control cover actual QCoDeS clients through the simulated local broker, SET acknowledgement forms, late replies and reconnects, storage recovery, persistent-field register separation, GUI visibility/hover behavior, and logarithmic label spacing.</p>
+<p>Not every failure case is exercised directly against the QCoDeS mixin. In particular, the broader socket transport timeout/reconnect tests validate the separate VTI transport and should not be presented as complete unit-test coverage of the mixin's desynchronized-session behavior.</p>
+<h3>Read-only hardware commissioning</h3>
+<ul>
+<li>Installed iTC firmware: <code>2.6.04.000</code>; IPS firmware: <code>2.5.09.000</code>.</li>
+<li>Repeated second-client tests rejected the second physical connection while the first remained healthy.</li>
+<li>Four simultaneous clients worked through the VTI broker.</li>
+<li>Actual QCoDeS reads through the broker returned temperature, pressure, and magnet-register data.</li>
+<li>No physical SET commands were sent as part of development and commissioning. Control forwarding was tested with simulated hardware.</li>
+</ul>
+<p>The iTC also reported a probe open-circuit alarm despite returning a numeric temperature. That is handled by the logger's data-quality layer, not fixed in the driver. Later iTC identity replies returned <code>OFF</code> in the serial-number field; the original serial was <code>233850309</code>. This identity anomaly remains undiagnosed and is recorded in the commissioning notes.</p>
+<h2>Remaining work before group adoption</h2>
+<ol>
+<li>Review the diff against a freshly fetched intended upstream base. The local branch starts from <code>serial_comms</code>.</li>
+<li>Review successful/rejected SET response variants against the installed firmware before relying on new control workflows.</li>
+<li>Add direct mixin tests for desynchronized-session handling and negative setter acknowledgements if stronger standalone driver coverage is needed.</li>
+<li>Review the inherited magnet control sequences separately: field ramps can still block without an overall completion deadline, and switch-heater sequencing is not newly qualified by these changes.</li>
+<li>Confirm compatibility with the group's measurement environments before updating them. The unchanged notebooks have not silently acquired the new drivers.</li>
+<li>Conduct long-duration operation checks. The brief tests do not establish years of uninterrupted reliability or resolve physical sensor faults.</li>
+</ol>
+<p>The VTI server's localhost addresses are iTC <code>127.0.0.1:17020</code> and IPS <code>127.0.0.1:17021</code>. Existing measurement scripts keep their QCoDeS parameter calls but must use those addresses while the service owns the physical connections. See <code>USER_MANUAL.md</code> for before/after examples and installation instructions.</p>
+</body></html>
