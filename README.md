@@ -1,5 +1,7 @@
 # VTI Control
 
+Public repository: https://github.com/barreralab/vti-control
+
 Standalone Windows logger for the Oxford Teslatron VTI and Mercury iTC/IPS.
 The desktop application observes the system. Acquisition continues when its window closes.
 Existing measurement scripts can query and control instruments through local forwarding ports.
@@ -110,7 +112,8 @@ Packaging the native Windows service also requires pywin32.
 Tests simulate malformed/unit-mismatched responses, late replies, concurrent clients, reconnection,
 SQLite failures/recovery, summaries and backups, and real QCoDeS instances through the broker.
 The hardware was commissioned with read commands only. Control forwarding is tested against a simulator.
-The Git repository has not been pushed to GitHub.
+The project is published at https://github.com/barreralab/vti-control.
+The Mercury driver changes are proposed in [BarreraLabDrivers draft PR #4](https://github.com/barreralab/BarreraLabDrivers/pull/4).
 
 ## Commissioning still required
 

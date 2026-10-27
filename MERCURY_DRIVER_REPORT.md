@@ -2,6 +2,16 @@
 
 Prepared 2026-10-27 for the BarreraLab VTI Control project.
 
+## Publication status
+
+- VTI Control: https://github.com/barreralab/vti-control (public).
+- Driver repository: https://github.com/barreralab/BarreraLabDrivers (public).
+- Driver commit: `780c64061f48e61a7c14003e4716dc5bacd8252b`.
+- Driver branch: `vti/mercury-communications`, pushed to the organization repository.
+- Draft pull request: https://github.com/barreralab/BarreraLabDrivers/pull/4, targeting `serial_comms`.
+- The driver branch was rebased onto freshly fetched `origin/serial_comms` (`c7488cb`) before publication. Five focused driver/broker integration cases passed after that rebase.
+- The driver pull request has not been merged. The original OneDrive checkout and existing measurement environments remain unchanged.
+
 ## Summary
 
 The Mercury iTC and IPS QCoDeS drivers were changed to make ordinary parameter access predictable, avoid changing iTC configuration merely by connecting, and prevent several silent numeric-parsing errors. The existing parameter names and command mappings were preserved. The background VTI logger uses its own standard-library socket transport; these driver changes are for measurement scripts that use QCoDeS, including clients of the local VTI server.
@@ -11,14 +21,14 @@ These are communication and data-integrity improvements. They are not a redesign
 ## Repository and branch provenance
 
 - Local checkout: `D:\VTI-control\BarreraLabDrivers`.
-- Upstream remote: `https://github.com/barreralab/BarreraInstrumentDrivers.git`.
+- Upstream remote: `https://github.com/barreralab/BarreraLabDrivers.git` (the former BarreraInstrumentDrivers URL redirects here).
 - Working branch: `vti/mercury-communications`.
 - Starting commit: `a65fa5890d9ab8d381fe4eeb3587e9f11065221b`.
 - The checkout was cloned locally from the existing driver repository, whose checked-out branch was `serial_comms`. The new working branch therefore starts from that branch, not from `main`.
-- No GitHub fork was created. No driver changes have been pushed, merged, or committed as part of the vti-control commit.
+- No GitHub fork was created. The driver update was committed separately and pushed to its own organization-repository branch; it is not merged into a shared branch.
 - The old OneDrive checkout and existing notebook environments were left unchanged.
 
-The cached `origin/main` reference in this local clone is `3dcb054`. Those references were inherited during the local clone; they are not a fresh assessment of the current GitHub default branch. Before preparing a driver PR, fetch the organization repository and choose the intended base branch. Port or cherry-pick only the Mercury changes as appropriate, rather than inadvertently including unrelated `serial_comms` work.
+The initial clone inherited a cached `origin/main` reference at `3dcb054`. Before publication, the organization repository was fetched and GitHub confirmed that its current default branch is `serial_comms`. The Mercury commit was rebased onto that branch at `c7488cb`; the two newer upstream commits changed unrelated files. The draft PR therefore contains only the six-file Mercury update against the current default branch, rather than proposing the entire serial_comms history against main.
 
 ## Files changed
 
@@ -159,7 +169,7 @@ The iTC also reported a probe open-circuit alarm despite returning a numeric tem
 
 ## Remaining work before group adoption
 
-1. Review the diff against a freshly fetched intended upstream base. The local branch starts from `serial_comms`.
+1. Review draft PR #4 against `serial_comms`. The fresh fetch and rebase were completed before publication; the PR is intentionally not merged automatically.
 2. Review successful/rejected SET response variants against the installed firmware before relying on new control workflows.
 3. Add direct mixin tests for desynchronized-session handling and negative setter acknowledgements if stronger standalone driver coverage is needed.
 4. Review the inherited magnet control sequences separately: field ramps can still block without an overall completion deadline, and switch-heater sequencing is not newly qualified by these changes.

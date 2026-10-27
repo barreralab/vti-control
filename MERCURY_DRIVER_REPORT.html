@@ -1,19 +1,29 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mercury driver improvements report</title><style>:root{color-scheme:dark}body{font:16px/1.65 "Segoe UI",sans-serif;background:#0c1220;color:#e4ecf7;max-width:1000px;margin:45px auto;padding:0 28px 60px}h1{font-size:36px}h2{color:#8ed8ff;margin-top:42px;border-top:1px solid #293b54;padding-top:20px}h3{color:#b5c9e3}a{color:#70cafa}pre{background:#131e30;border:1px solid #293b54;border-radius:8px;padding:16px;overflow:auto}code{font-family:Consolas,monospace;background:#19273b;padding:2px 4px}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #293b54;padding:9px;text-align:left}th{background:#19273b}li{margin:7px 0}</style><body><h1>Mercury driver improvements and validation report</h1>
 <p>Prepared 2026-10-27 for the BarreraLab VTI Control project.</p>
+<h2>Publication status</h2>
+<ul>
+<li>VTI Control: https://github.com/barreralab/vti-control (public).</li>
+<li>Driver repository: https://github.com/barreralab/BarreraLabDrivers (public).</li>
+<li>Driver commit: <code>780c64061f48e61a7c14003e4716dc5bacd8252b</code>.</li>
+<li>Driver branch: <code>vti/mercury-communications</code>, pushed to the organization repository.</li>
+<li>Draft pull request: https://github.com/barreralab/BarreraLabDrivers/pull/4, targeting <code>serial_comms</code>.</li>
+<li>The driver branch was rebased onto freshly fetched <code>origin/serial_comms</code> (<code>c7488cb</code>) before publication. Five focused driver/broker integration cases passed after that rebase.</li>
+<li>The driver pull request has not been merged. The original OneDrive checkout and existing measurement environments remain unchanged.</li>
+</ul>
 <h2>Summary</h2>
 <p>The Mercury iTC and IPS QCoDeS drivers were changed to make ordinary parameter access predictable, avoid changing iTC configuration merely by connecting, and prevent several silent numeric-parsing errors. The existing parameter names and command mappings were preserved. The background VTI logger uses its own standard-library socket transport; these driver changes are for measurement scripts that use QCoDeS, including clients of the local VTI server.</p>
 <p>These are communication and data-integrity improvements. They are not a redesign or qualification of the magnet control sequences.</p>
 <h2>Repository and branch provenance</h2>
 <ul>
 <li>Local checkout: <code>D:\VTI-control\BarreraLabDrivers</code>.</li>
-<li>Upstream remote: <code>https://github.com/barreralab/BarreraInstrumentDrivers.git</code>.</li>
+<li>Upstream remote: <code>https://github.com/barreralab/BarreraLabDrivers.git</code> (the former BarreraInstrumentDrivers URL redirects here).</li>
 <li>Working branch: <code>vti/mercury-communications</code>.</li>
 <li>Starting commit: <code>a65fa5890d9ab8d381fe4eeb3587e9f11065221b</code>.</li>
 <li>The checkout was cloned locally from the existing driver repository, whose checked-out branch was <code>serial_comms</code>. The new working branch therefore starts from that branch, not from <code>main</code>.</li>
-<li>No GitHub fork was created. No driver changes have been pushed, merged, or committed as part of the vti-control commit.</li>
+<li>No GitHub fork was created. The driver update was committed separately and pushed to its own organization-repository branch; it is not merged into a shared branch.</li>
 <li>The old OneDrive checkout and existing notebook environments were left unchanged.</li>
 </ul>
-<p>The cached <code>origin/main</code> reference in this local clone is <code>3dcb054</code>. Those references were inherited during the local clone; they are not a fresh assessment of the current GitHub default branch. Before preparing a driver PR, fetch the organization repository and choose the intended base branch. Port or cherry-pick only the Mercury changes as appropriate, rather than inadvertently including unrelated <code>serial_comms</code> work.</p>
+<p>The initial clone inherited a cached <code>origin/main</code> reference at <code>3dcb054</code>. Before publication, the organization repository was fetched and GitHub confirmed that its current default branch is <code>serial_comms</code>. The Mercury commit was rebased onto that branch at <code>c7488cb</code>; the two newer upstream commits changed unrelated files. The draft PR therefore contains only the six-file Mercury update against the current default branch, rather than proposing the entire serial_comms history against main.</p>
 <h2>Files changed</h2>
 <table>
 <thead>
@@ -157,7 +167,7 @@ SET:DEV:DB5.P1:PRES:LOOP:FAUT:OFF
 <p>The iTC also reported a probe open-circuit alarm despite returning a numeric temperature. That is handled by the logger's data-quality layer, not fixed in the driver. Later iTC identity replies returned <code>OFF</code> in the serial-number field; the original serial was <code>233850309</code>. This identity anomaly remains undiagnosed and is recorded in the commissioning notes.</p>
 <h2>Remaining work before group adoption</h2>
 <ol>
-<li>Review the diff against a freshly fetched intended upstream base. The local branch starts from <code>serial_comms</code>.</li>
+<li>Review draft PR #4 against <code>serial_comms</code>. The fresh fetch and rebase were completed before publication; the PR is intentionally not merged automatically.</li>
 <li>Review successful/rejected SET response variants against the installed firmware before relying on new control workflows.</li>
 <li>Add direct mixin tests for desynchronized-session handling and negative setter acknowledgements if stronger standalone driver coverage is needed.</li>
 <li>Review the inherited magnet control sequences separately: field ramps can still block without an overall completion deadline, and switch-heater sequencing is not newly qualified by these changes.</li>
